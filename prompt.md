@@ -1,7 +1,3 @@
-<goal> 
-Deliver a single XML payload that the coder-agent can follow to implement *Smart Bookmark Janitor* end-to-end.  
-</goal>  
-
 <xml>
 <!-- ╔═══════════════════════════════════════════════════════════╗ -->
 <!-- ║            CODER-AGENT BRIEF – Smart Bookmark Janitor     ║ -->
