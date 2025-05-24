@@ -1,59 +1,53 @@
+<goal> 
+Deliver a single XML payload that the coder-agent can follow to implement *Smart Bookmark Janitor* end-to-end.  
+</goal>  
+
+<xml>
 <!-- ╔═══════════════════════════════════════════════════════════╗ -->
-<!-- ║           SMART BOOKMARK JANITOR - Prompt v 0.5           ║ -->
+<!-- ║            CODER-AGENT BRIEF – Smart Bookmark Janitor     ║ -->
+<!-- ║              Author: System Architect v0.5 (2025-05-23)   ║ -->
 <!-- ╚═══════════════════════════════════════════════════════════╝ -->
 
 <overview>
   <![CDATA[
-  **MVP — Smart Bookmark Janitor (SBJ)**  
-  Chrome extension that scans ≤ 5 000 existing bookmarks, deduces topics via
-  Gemini 2 Flash Lite, and rebuilds the tree into ≤ 30 semantic folders.
-  
-  **Key architecture**
-    1. Chrome extension (MV3) — popup UI, Bookmarks API, background SW.
-    2. Companion **worker** — *default:* **Local Native-Messaging host**
-       (Node binary packaged with `pkg`).  
-       • Cloud-Run variant is out-of-scope for v0.1, tracked in `roadmap.md`.
-    3. SQLite queue (better-sqlite3) on the worker’s file-system.
-    4. Fast metadata fetch → **Playwright fallback** (only if meta empty).  
-    5. Batched Gemini Flash Lite (25 URLs/call); escalate to
-       Gemini 2 Pro *only* if `confidence < 0 .75`, max 30 URLs total.
-    6. Folder-builder → `chrome.bookmarks.move` or clean HTML export.
+  **Problem (MVP)**  
+  Chrome users sit on thousands of uncategorised bookmarks. *Smart Bookmark
+  Janitor (SBJ)* re-labels ≤ 5 000 bookmarks, clusters them into ≤ 30 semantic
+  folders via **Gemini 2 Flash Lite**, then applies the structure with a click.
+  Safety: full HTML backup + one-click Undo.
 
-  **Safety nets** — full backup (`AllBookmarks.html`) on first run & one-click
-  Undo (stores original parent IDs).
+  **Value** — runs locally through a packaged Node worker → negligible cloud
+  cost; advanced users may inject their own Gemini key.
   ]]>
 </overview>
 
-<!-- ──────────────────────────────────────────────────────────── -->
-
 <packages>
   <![CDATA[
-  # Core runtime
-  - node@20 (ESM)   pnpm
-  - typescript@5   @types/chrome  zod-to-ts
+  ## Node tool-chain
+  - node@20  pnpm
+  - typescript@5  @types/chrome  zod-to-ts
 
-  # Extension bundling
-  - vite  react  react-dom
+  ## Extension build
+  - vite
+  - react  react-dom
   - tailwindcss  postcss  autoprefixer
-  - webextension-polyfill # Promise-based Chrome API
-  - esbuild-crx     # CRX pack & hot-reload in dev
+  - webextension-polyfill   # Promise Chrome API
+  - esbuild-crx              # CRX pack & hot-reload
 
-  # Worker runtime
-  - playwright@1.44.0   # headless Chromium
-  - better-sqlite3    # queue DB
-  - google-ai      # Gemini client
-  - pino        # JSON logs
-  - dotenv      # config
-  - pkg        # compile native host binary
+  ## Worker runtime
+  - playwright@1.44.0        # headless Chromium
+  - better-sqlite3           # queue DB
+  - google-ai                # Gemini client
+  - pino                     # JSON logs
+  - dotenv                   # env config
+  - pkg                      # compile native host binary
   ]]>
 </packages>
 
-<!-- ──────────────────────────────────────────────────────────── -->
-
 <dataContracts>
   <![CDATA[
-  // src/shared/types.ts
-  --------------------------------------------------------------
+  // src/shared/types.ts  (validated with Zod)
+  ------------------------------------------------
   import { z } from "zod"
 
   export const BookmarkRec = z.object({
@@ -61,7 +55,7 @@
     title: z.string().optional(),
     url: z.string().url(),
     parentFolder: z.string().optional(),
-    createdAt: z.number().int()            // ms since epoch
+    createdAt: z.number().int()               // ms epoch
   })
 
   export const MetaSnippet = z.object({
@@ -80,41 +74,37 @@
     confidence: z.number().min(0).max(1)
   })
 
-  /** Extension ⇄ Worker messages */
+  /** Extension ⇄ Worker envelope */
   export const Msg = z.discriminatedUnion("type", [
-    z.object({ type: z.literal("enqueue"), rec: BookmarkRec }),
+    z.object({ type: z.literal("enqueue"),  rec: BookmarkRec }),
     z.object({ type: z.literal("progress"), done: z.number(), total: z.number() }),
-    z.object({ type: z.literal("apply"), tree: z.any() }),
-    z.object({ type: z.literal("backup"), html: z.string() }),
-    z.object({ type: z.literal("error"), kind: z.string(), err: z.string(), url: z.string() })
+    z.object({ type: z.literal("apply"),    tree: z.any() }),
+    z.object({ type: z.literal("backup"),   html: z.string() }),
+    z.object({ type: z.literal("error"),    kind: z.string(), err: z.string(), url: z.string() })
   ])
   ]]>
 </dataContracts>
-
-<!-- ──────────────────────────────────────────────────────────── -->
 
 <stateDiagrams>
   <![CDATA[
   **Queue row lifecycle**
   [pending] → fetchMeta → [fetched] → label → [labelled] → buildTree
-       ↘ error(fetch/network/ai)            ↙
+       ↘ error(network/ai)               ↙
             [error]
 
-  **Extension event flow (MV3)**
-  ┌──── popup UI ────┐  click Scan          progress
-  │                  │──────────────▶ bg service-worker ───────────▶ popup UI
-  └──────────────────┘                    │            ▲
-        ▲ apply tree                      │native msg  │enqueue new
-        │                                 ▼            │
-  chrome.bookmarks.*◀────── bg SW ◀──── native host (worker)
+  **Extension event flow**
+  ┌──── popup UI ────┐  click Scan            progress
+  │                  │─────────────▶ bg service-worker ─────────▶ popup UI
+  └──────────────────┘                      │          ▲
+        ▲ apply tree                        │nativeMsg │enqueue new
+        │                                   ▼          │
+  chrome.bookmarks.*◀──── bg SW ◀──── local worker (native host)
   ]]>
 </stateDiagrams>
 
-<!-- ──────────────────────────────────────────────────────────── -->
-
 <interfaces>
   <![CDATA[
-  ▸ **manifest.json**
+  ▸ manifest.json
   ```json
   {
     "manifest_version": 3,
